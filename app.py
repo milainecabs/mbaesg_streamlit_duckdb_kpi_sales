@@ -3,6 +3,7 @@ import uuid
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
+import pandas as pd
 import streamlit as st
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
@@ -14,7 +15,6 @@ from src.db import (
     get_table_schema,
     load_csv_to_table,
     preview_table,
-    query_scalar,
 )
 
 # ---------------------------
@@ -25,13 +25,11 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("📊 Dashboard interactif – DuckDB & Streamlit")
+st.title("📊 Indicateurs clés – Amazon")
 st.markdown(
     """
-    Cette application vous permet de :
-    - téléverser un fichier CSV,
-    - stocker les données dans DuckDB,
-    - explorer rapidement le contenu du dataset.
+    Cette page présente 4 indicateurs clés permettant d’analyser l’offre produit Amazon
+    selon le volume, le prix, la qualité perçue et la politique de réduction.
     """
 )
 st.divider()
@@ -85,7 +83,7 @@ st.dataframe(preview_df, width="stretch")
 # Filtres
 # ---------------------------
 st.divider()
-st.subheader("🔎 Filtres (adaptés au dataset)")
+st.subheader("🔎 Filtres")
 
 schema: List[Tuple[str, str]] = get_table_schema(conn)
 colonnes = {name: dtype for name, dtype in schema}
@@ -94,60 +92,77 @@ FilterValue = Union[str, List[str], float, Tuple[float, float]]
 filtres: Dict[str, FilterValue] = {}
 
 is_amazon = "product_id" in colonnes and "category" in colonnes
-
-if is_amazon:
-    st.sidebar.subheader("Filtres – Amazon")
-
-    product_id = st.sidebar.text_input("Rechercher par product_id")
-    if product_id:
-        filtres["product_id"] = product_id
-
-    categories = get_distinct_values(conn, "category")
-    categories_short = {cat: cat.split("|")[-1] for cat in categories}
-
-    selected_short = st.sidebar.multiselect(
-        "Catégorie",
-        options=sorted(set(categories_short.values())),
+if not is_amazon:
+    st.error(
+        "Ce tableau de bord est configuré pour le dataset Amazon. "
+        "Merci de charger le CSV Amazon."
     )
+    st.stop()
 
-    selected_full = [
-        full for full, short in categories_short.items() if short in selected_short
-    ]
-    if selected_full:
-        filtres["category"] = selected_full
+st.sidebar.subheader("Filtres – Amazon")
 
-    min_price, max_price = st.sidebar.slider(
-        "Prix réel (actual_price)",
-        min_value=0.0,
-        max_value=100000.0,
-        value=(0.0, 100000.0),
-        step=10.0,
-    )
-    filtres["actual_price_range"] = (min_price, max_price)
+product_id = st.sidebar.text_input("Rechercher par product_id")
+if product_id:
+    filtres["product_id"] = product_id
 
-    min_rating = st.sidebar.slider(
-        "Note minimale",
-        min_value=0.0,
-        max_value=5.0,
-        value=0.0,
-        step=0.1,
-    )
-    filtres["min_rating"] = min_rating
+categories = get_distinct_values(conn, "category")
+categories_short = {cat: cat.split("|")[-1] for cat in categories}
 
-# ---------------------------
-# KPI + VISUALISATIONS
-# ---------------------------
-st.divider()
-st.subheader("📊 Indicateurs clés (KPI) – Amazon")
+selected_short = st.sidebar.multiselect(
+    "Catégorie",
+    options=sorted(set(categories_short.values())),
+)
+
+selected_full = [
+    full for full, short in categories_short.items() if short in selected_short
+]
+if selected_full:
+    filtres["category"] = selected_full
+
+min_price, max_price = st.sidebar.slider(
+    "Prix réel (actual_price)",
+    min_value=0.0,
+    max_value=100000.0,
+    value=(0.0, 100000.0),
+    step=10.0,
+)
+filtres["actual_price_range"] = (min_price, max_price)
+
+min_rating = st.sidebar.slider(
+    "Note minimale",
+    min_value=0.0,
+    max_value=5.0,
+    value=0.0,
+    step=0.1,
+)
+filtres["min_rating"] = min_rating
 
 where_clause = build_where_clause(filtres)
 
-# KPI 1 – Nombre de produits
-kpi_count = int(query_scalar(conn, f"SELECT COUNT(*) FROM sales {where_clause};"))
-st.markdown("### Nombre de produits")
-st.bar_chart({"Produits": [kpi_count]})
+# ---------------------------
+# KPI + Visualisations
+# ---------------------------
+st.divider()
+st.subheader("📊 Indicateurs clés – Amazon")
 
-# KPI 2 – Prix moyen par catégorie
+# KPI 1 – Nombre de produits
+st.subheader("Nombre de produits")
+st.caption("Volume total de produits correspondant aux filtres sélectionnés.")
+
+count_df = conn.execute(
+    f"""
+    SELECT COUNT(*) AS nb_produits
+    FROM sales
+    {where_clause};
+    """
+).fetch_df()
+
+st.bar_chart(count_df, width="stretch")
+
+# KPI 2 – Prix moyen réel par catégorie
+st.subheader("Prix moyen réel par catégorie (Top 10)")
+st.caption("Comparaison du prix moyen des produits par catégorie principale.")
+
 price_by_cat_df = conn.execute(
     f"""
     SELECT
@@ -170,10 +185,12 @@ price_by_cat_df["category"] = price_by_cat_df["category"].apply(
     lambda x: x.split("|")[-1]
 )
 
-st.markdown("### Prix moyen réel par catégorie (Top 10)")
-st.bar_chart(price_by_cat_df.set_index("category"))
+st.bar_chart(price_by_cat_df.set_index("category"), width="stretch")
 
 # KPI 3 – Note moyenne par catégorie
+st.subheader("Note moyenne par catégorie (Top 10)")
+st.caption("Qualité perçue des produits selon les catégories principales.")
+
 rating_by_cat_df = conn.execute(
     f"""
     SELECT
@@ -196,31 +213,39 @@ rating_by_cat_df["category"] = rating_by_cat_df["category"].apply(
     lambda x: x.split("|")[-1]
 )
 
-st.markdown("### Note moyenne par catégorie (Top 10)")
-st.bar_chart(rating_by_cat_df.set_index("category"))
+st.bar_chart(rating_by_cat_df.set_index("category"), width="stretch")
 
-# KPI 4 – Réduction moyenne par tranche
-discount_bucket_df = conn.execute(
+# KPI 4 – Répartition des produits par niveau de réduction
+st.subheader("Répartition des produits par niveau de réduction")
+st.caption("Structure des remises appliquées aux produits (3 tranches).")
+
+discount_df = conn.execute(
     f"""
     SELECT
         CASE
             WHEN TRY_CAST(
                 regexp_replace(discount_percentage, '[^0-9\\.]', '', 'g')
                 AS DOUBLE
-            ) < 10 THEN '< 10%'
+            ) < 10 THEN '<10%'
             WHEN TRY_CAST(
                 regexp_replace(discount_percentage, '[^0-9\\.]', '', 'g')
                 AS DOUBLE
-            ) < 30 THEN '10–30%'
-            ELSE '> 30%'
+            ) <= 30 THEN '10-30%'
+            ELSE '>30%'
         END AS discount_bucket,
-        COUNT(*) AS nb_products
+        COUNT(*) AS nb_produits
     FROM sales
     {where_clause}
-    GROUP BY discount_bucket
-    ORDER BY nb_products DESC;
+    GROUP BY discount_bucket;
     """
 ).fetch_df()
 
-st.markdown("### Répartition des produits par niveau de réduction")
-st.bar_chart(discount_bucket_df.set_index("discount_bucket"))
+ordre = ["<10%", "10-30%", ">30%"]
+discount_df["discount_bucket"] = pd.Categorical(
+    discount_df["discount_bucket"],
+    categories=ordre,
+    ordered=True,
+)
+discount_df = discount_df.sort_values("discount_bucket")
+
+st.bar_chart(discount_df.set_index("discount_bucket"), width="stretch")
