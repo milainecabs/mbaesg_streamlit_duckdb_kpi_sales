@@ -59,9 +59,10 @@ if uploaded_file is None:
     st.info("👈 Commence par téléverser un fichier CSV depuis le menu de gauche.")
     st.stop()
 
+assert uploaded_file is not None
+
 with st.spinner("Chargement du fichier et ingestion dans DuckDB..."):
     temp_path = Path("uploaded_data.csv")
-    assert uploaded_file is not None
     temp_path.write_bytes(uploaded_file.getbuffer())
     load_csv_to_table(conn, temp_path)
 
@@ -93,7 +94,6 @@ FilterValue = Union[str, List[str], float, Tuple[float, float]]
 filtres: Dict[str, FilterValue] = {}
 
 is_amazon = "product_id" in colonnes and "category" in colonnes
-is_bk_mcd = "item" in colonnes and "Value" in colonnes
 
 if is_amazon:
     st.sidebar.subheader("Filtres – Amazon")
@@ -134,130 +134,93 @@ if is_amazon:
     )
     filtres["min_rating"] = min_rating
 
-elif is_bk_mcd:
-    st.sidebar.subheader("Filtres – McDonald’s / Burger King")
-
-    items = get_distinct_values(conn, "item")
-    selected_items = st.sidebar.multiselect("Indicateur", options=items)
-    if selected_items:
-        filtres["item"] = selected_items
-
 # ---------------------------
-# Filtres affichables (métier)
-# ---------------------------
-st.markdown("### Filtres actifs (vue métier)")
-
-filtres_affichables: Dict[str, FilterValue] = filtres.copy()
-
-if "category" in filtres_affichables:
-    categories_full = filtres_affichables["category"]
-    if isinstance(categories_full, list):
-        filtres_affichables["category"] = sorted(
-            {cat.split("|")[-1] for cat in categories_full}
-        )
-
-if filtres_affichables:
-    st.json(filtres_affichables)
-else:
-    st.info("Aucun filtre actif.")
-
-# ---------------------------
-# KPI
+# KPI + VISUALISATIONS
 # ---------------------------
 st.divider()
-st.subheader("📊 Indicateurs clés (KPI)")
+st.subheader("📊 Indicateurs clés (KPI) – Amazon")
 
 where_clause = build_where_clause(filtres)
 
-if is_amazon:
-    kpi_count = int(query_scalar(conn, f"SELECT COUNT(*) FROM sales {where_clause};"))
+# KPI 1 – Nombre de produits
+kpi_count = int(query_scalar(conn, f"SELECT COUNT(*) FROM sales {where_clause};"))
+st.markdown("### Nombre de produits")
+st.bar_chart({"Produits": [kpi_count]})
 
-    avg_price = query_scalar(
-        conn,
-        f"""
-        SELECT AVG(
+# KPI 2 – Prix moyen par catégorie
+price_by_cat_df = conn.execute(
+    f"""
+    SELECT
+        category,
+        AVG(
             TRY_CAST(
                 regexp_replace(actual_price, '[^0-9\\.]', '', 'g')
                 AS DOUBLE
             )
-        )
-        FROM sales
-        {where_clause};
-        """,
-    )
+        ) AS avg_price
+    FROM sales
+    {where_clause}
+    GROUP BY category
+    ORDER BY avg_price DESC
+    LIMIT 10;
+    """
+).fetch_df()
 
-    avg_rating = query_scalar(
-        conn,
-        f"""
-        SELECT AVG(
+price_by_cat_df["category"] = price_by_cat_df["category"].apply(
+    lambda x: x.split("|")[-1]
+)
+
+st.markdown("### Prix moyen réel par catégorie (Top 10)")
+st.bar_chart(price_by_cat_df.set_index("category"))
+
+# KPI 3 – Note moyenne par catégorie
+rating_by_cat_df = conn.execute(
+    f"""
+    SELECT
+        category,
+        AVG(
             TRY_CAST(
                 regexp_replace(rating, '[^0-9\\.]', '', 'g')
                 AS DOUBLE
             )
-        )
-        FROM sales
-        {where_clause};
-        """,
-    )
+        ) AS avg_rating
+    FROM sales
+    {where_clause}
+    GROUP BY category
+    ORDER BY avg_rating DESC
+    LIMIT 10;
+    """
+).fetch_df()
 
-    avg_discount = query_scalar(
-        conn,
-        f"""
-        SELECT AVG(
-            TRY_CAST(
+rating_by_cat_df["category"] = rating_by_cat_df["category"].apply(
+    lambda x: x.split("|")[-1]
+)
+
+st.markdown("### Note moyenne par catégorie (Top 10)")
+st.bar_chart(rating_by_cat_df.set_index("category"))
+
+# KPI 4 – Réduction moyenne par tranche
+discount_bucket_df = conn.execute(
+    f"""
+    SELECT
+        CASE
+            WHEN TRY_CAST(
                 regexp_replace(discount_percentage, '[^0-9\\.]', '', 'g')
                 AS DOUBLE
-            )
-        )
-        FROM sales
-        {where_clause};
-        """,
-    )
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Nombre de produits", kpi_count)
-    c2.metric("Prix moyen réel", round(avg_price, 2))
-    c3.metric("Note moyenne", round(avg_rating, 2))
-    c4.metric("Réduction moyenne (%)", round(avg_discount, 2))
-
-    # ---------------------------
-    # Distribution des prix
-    # ---------------------------
-    st.divider()
-    st.subheader("💸 Distribution des prix")
-
-    price_where_clause = where_clause
-    if price_where_clause:
-        price_where_clause = f"{price_where_clause} AND actual_price IS NOT NULL"
-    else:
-        price_where_clause = "WHERE actual_price IS NOT NULL"
-
-    price_dist_df = conn.execute(
-        f"""
-        SELECT
-            TRY_CAST(
-                regexp_replace(actual_price, '[^0-9\\.]', '', 'g')
+            ) < 10 THEN '< 10%'
+            WHEN TRY_CAST(
+                regexp_replace(discount_percentage, '[^0-9\\.]', '', 'g')
                 AS DOUBLE
-            ) AS price
-        FROM sales
-        {price_where_clause};
-        """
-    ).fetch_df()
+            ) < 30 THEN '10–30%'
+            ELSE '> 30%'
+        END AS discount_bucket,
+        COUNT(*) AS nb_products
+    FROM sales
+    {where_clause}
+    GROUP BY discount_bucket
+    ORDER BY nb_products DESC;
+    """
+).fetch_df()
 
-    price_dist_df = price_dist_df.dropna()
-
-    st.bar_chart(price_dist_df["price"].value_counts().sort_index())
-
-elif is_bk_mcd:
-    total_value = query_scalar(
-        conn,
-        f"SELECT SUM(Value) FROM sales {where_clause};",
-    )
-    avg_value = query_scalar(
-        conn,
-        f"SELECT AVG(Value) FROM sales {where_clause};",
-    )
-
-    c1, c2 = st.columns(2)
-    c1.metric("Valeur totale", round(total_value, 2))
-    c2.metric("Valeur moyenne", round(avg_value, 2))
+st.markdown("### Répartition des produits par niveau de réduction")
+st.bar_chart(discount_bucket_df.set_index("discount_bucket"))
