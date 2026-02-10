@@ -15,21 +15,23 @@ from src.db import (
     get_table_schema,
     load_csv_to_table,
     preview_table,
+    query_scalar,
 )
 
 # ---------------------------
 # Config
 # ---------------------------
 st.set_page_config(
-    page_title="Dashboard interactif – DuckDB & Streamlit",
+    page_title="Indicateurs clés – Amazon",
     layout="wide",
 )
 
 st.title("📊 Indicateurs clés – Amazon")
 st.markdown(
     """
-    Cette page présente 4 indicateurs clés permettant d’analyser l’offre produit Amazon
-    selon le volume, le prix, la qualité perçue et la politique de réduction.
+    Tableau de bord interactif permettant d’analyser l’offre Amazon selon :
+    le volume de produits, le positionnement prix, la qualité perçue
+    et la politique de réduction.
     """
 )
 st.divider()
@@ -49,15 +51,17 @@ conn = connect(Path(st.session_state["db_path"]))
 # ---------------------------
 st.sidebar.header("⚙️ Paramètres")
 uploaded_file: Optional[UploadedFile] = st.sidebar.file_uploader(
-    "Téléverser un fichier CSV",
+    "Téléverser un fichier CSV Amazon",
     type=["csv"],
 )
 
 if uploaded_file is None:
-    st.info("👈 Commence par téléverser un fichier CSV depuis le menu de gauche.")
+    st.info("👈 Téléverse le fichier Amazon depuis le menu de gauche.")
     st.stop()
 
 assert uploaded_file is not None
+
+st.info(f"📄 Fichier chargé : **{uploaded_file.name}**")
 
 with st.spinner("Chargement du fichier et ingestion dans DuckDB..."):
     temp_path = Path("uploaded_data.csv")
@@ -71,7 +75,7 @@ st.success("✅ Fichier chargé avec succès dans DuckDB")
 # ---------------------------
 row_count = get_row_count(conn)
 c1, c2 = st.columns(2)
-c1.metric("Nombre de lignes", row_count)
+c1.metric("Nombre de lignes dans le CSV", row_count)
 c2.metric("Nom de la table", "sales")
 
 st.divider()
@@ -83,7 +87,7 @@ st.dataframe(preview_df, width="stretch")
 # Filtres
 # ---------------------------
 st.divider()
-st.subheader("🔎 Filtres")
+st.subheader("🎛️ Filtres")
 
 schema: List[Tuple[str, str]] = get_table_schema(conn)
 colonnes = {name: dtype for name, dtype in schema}
@@ -93,10 +97,7 @@ filtres: Dict[str, FilterValue] = {}
 
 is_amazon = "product_id" in colonnes and "category" in colonnes
 if not is_amazon:
-    st.error(
-        "Ce tableau de bord est configuré pour le dataset Amazon. "
-        "Merci de charger le CSV Amazon."
-    )
+    st.error("Ce dashboard est prévu uniquement pour le dataset Amazon.")
     st.stop()
 
 st.sidebar.subheader("Filtres – Amazon")
@@ -137,31 +138,45 @@ min_rating = st.sidebar.slider(
 )
 filtres["min_rating"] = min_rating
 
+# ---------------------------
+# Filtres actifs (vue métier)
+# ---------------------------
+st.subheader("🎯 Filtres actifs")
+
+filtres_affichables = filtres.copy()
+
+if "category" in filtres_affichables:
+    categories_full: List[str] = list(filtres_affichables["category"])  # type: ignore
+    filtres_affichables["category"] = sorted(
+        {cat.split("|")[-1] for cat in categories_full}
+    )
+
+if filtres_affichables:
+    st.json(filtres_affichables)
+else:
+    st.info("Aucun filtre actif.")
+
 where_clause = build_where_clause(filtres)
 
 # ---------------------------
-# KPI + Visualisations
+# KPI
 # ---------------------------
 st.divider()
-st.subheader("📊 Indicateurs clés – Amazon")
+st.subheader("📊 Indicateurs clés")
 
-# KPI 1 – Nombre de produits
-st.subheader("Nombre de produits")
-st.caption("Volume total de produits correspondant aux filtres sélectionnés.")
+# KPI 1 – Nombre de produits distincts
+nb_produits = int(
+    query_scalar(
+        conn,
+        f"SELECT COUNT(DISTINCT product_id) FROM sales {where_clause};",
+    )
+)
 
-count_df = conn.execute(
-    f"""
-    SELECT COUNT(*) AS nb_produits
-    FROM sales
-    {where_clause};
-    """
-).fetch_df()
+st.metric("Nombre de produits distincts", nb_produits)
 
-st.bar_chart(count_df, width="stretch")
-
-# KPI 2 – Prix moyen réel par catégorie
+# KPI 2 – Prix moyen par catégorie
 st.subheader("Prix moyen réel par catégorie (Top 10)")
-st.caption("Comparaison du prix moyen des produits par catégorie principale.")
+st.caption("Comparaison du positionnement prix entre catégories principales.")
 
 price_by_cat_df = conn.execute(
     f"""
@@ -189,7 +204,7 @@ st.bar_chart(price_by_cat_df.set_index("category"), width="stretch")
 
 # KPI 3 – Note moyenne par catégorie
 st.subheader("Note moyenne par catégorie (Top 10)")
-st.caption("Qualité perçue des produits selon les catégories principales.")
+st.caption("Niveau de satisfaction client par catégorie de produits.")
 
 rating_by_cat_df = conn.execute(
     f"""
@@ -215,9 +230,9 @@ rating_by_cat_df["category"] = rating_by_cat_df["category"].apply(
 
 st.bar_chart(rating_by_cat_df.set_index("category"), width="stretch")
 
-# KPI 4 – Répartition des produits par niveau de réduction
+# KPI 4 – Répartition par niveau de réduction
 st.subheader("Répartition des produits par niveau de réduction")
-st.caption("Structure des remises appliquées aux produits (3 tranches).")
+st.caption("Structure des remises appliquées aux produits Amazon.")
 
 discount_df = conn.execute(
     f"""
