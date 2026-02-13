@@ -51,5 +51,6 @@ Plaintext
 ├── sales.duckdb          # Base de données locale DuckDB
 ├── requirements.txt      # Dépendances du projet
 └── README.md             # Documentation
+
 👥 Contributeurs
 [Milaine, Thomas, Irmeline, Linh, Jeff]
