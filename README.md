@@ -25,11 +25,11 @@ Assurez-vous d'avoir Python 3.9 ou plus récent installé.
 
 2. Configuration de l'environnement
 PowerShell
-# Activer l'environnement virtuel (déjà créé dans votre projet)
+# Activer l'environnement virtuel
 .\.venv\Scripts\activate
 
 # Installer les dépendances
-pip install -r requirements.txt
+pip install -r requirements.txt<>
 3. Lancement
 PowerShell
 streamlit run app.py
