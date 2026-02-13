@@ -52,5 +52,5 @@ Plaintext**<br>
 ├── requirements.txt      # Dépendances du projet<br>
 └── README.md             # Documentation
 
-👥 Contributeurs
+👥 **Contributeurs**
 [Milaine, Thomas, Irmeline, Linh, Jeff]
