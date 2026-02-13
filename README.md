@@ -1,5 +1,5 @@
-🚀 Dashboard KPI Multi-Datasets (Amazon, BK, McDo)
-Ce projet est une application d'analyse de données interactive permettant de visualiser des indicateurs clés (KPI) à partir de trois sources de données distinctes. L'application détecte automatiquement le type de fichier importé et adapte les analyses en conséquence.
+🚀** Dashboard KPI Multi-Datasets (Amazon, BK, McDo)
+Ce projet est une application d'analyse de données interactive permettant de visualiser des indicateurs clés (KPI) à partir de trois sources de données distinctes. L'application détecte automatiquement le type de fichier importé et adapte les analyses en conséquence. **
 
 📋 Fonctionnalités
 Détection Automatique : Identifie si le fichier CSV provient d'Amazon, de Burger King ou de McDonald's en analysant les noms des colonnes.
