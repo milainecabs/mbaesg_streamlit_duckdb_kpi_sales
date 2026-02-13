@@ -46,10 +46,10 @@ Importation : Utilisez la barre latérale (sidebar) pour uploader votre fichier 
 
 📂 **Structure du Projet
 Plaintext**<br>
-├── .venv/                # Environnement virtuel Python
-├── app.py                # Code principal de l'application Streamlit
-├── sales.duckdb          # Base de données locale DuckDB
-├── requirements.txt      # Dépendances du projet
+├── .venv/                # Environnement virtuel Python<br>
+├── app.py                # Code principal de l'application Streamlit<br>
+├── sales.duckdb          # Base de données locale DuckDB<br>
+├── requirements.txt      # Dépendances du projet<br>
 └── README.md             # Documentation
 
 👥 Contributeurs
