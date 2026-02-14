@@ -1,8 +1,8 @@
-🏛️ Dashboard d'Analyse Multi-Datasets (Sales Analytics)
-📋 Présentation du Projet
-Ce dashboard est une plateforme d'aide à la décision centralisée permettant d'analyser les performances de géants du commerce et de la restauration. Il permet aux analystes d'explorer des données provenant de Amazon, McDonald's et Burger King au sein d'une interface unique et intelligente.
+🏛️ # Dashboard d'Analyse Multi-Datasets (Sales Analytics)<br>
+📋 ## Présentation du Projet<br>
+Ce dashboard est une plateforme d'aide à la décision centralisée permettant d'analyser les performances de géants du commerce et de la restauration. Il permet aux analystes d'explorer des données provenant de **Amazon, McDonald's et Burger King** au sein d'une interface unique et intelligente.
 
-🚀 Architecture Technique
+🚀 **Architecture Technique**
 1. Détection Intelligente (utils/detection.py)
 Le système identifie le type de dataset dès l'importation en analysant la structure des colonnes :
 
