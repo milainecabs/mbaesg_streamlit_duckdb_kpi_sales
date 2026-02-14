@@ -41,5 +41,5 @@ Le projet est conçu de manière modulaire pour faciliter les modifications :
 
 ## ⚡ Installation rapide<br>
 PowerShell<br>
-`pip install streamlit pandas plotly duckdb<br>`
+`pip install streamlit pandas plotly duckdb`<br>
 `streamlit run app.py`
