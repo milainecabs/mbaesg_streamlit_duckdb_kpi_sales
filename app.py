@@ -1,183 +1,246 @@
 import streamlit as st
 import pandas as pd
-import duckdb
-import altair as alt
+import plotly.express as px
 
-# ---------------------------------------------------------
-# Configuration Streamlit
-# ---------------------------------------------------------
-st.set_page_config(page_title="Dashboard KPI – Multi‑Datasets", layout="wide")
-st.title("Dashboard KPI – Amazon / Burger King / McDonald's")
-
-
-# ---------------------------------------------------------
-# Connexion DuckDB
-# ---------------------------------------------------------
-@st.cache_resource
-def get_connection():
-    return duckdb.connect("sales.duckdb")
-
-con = get_connection()
+from utils.cleaning_data import clean_data
+from utils.detection import detect_dataset_type
+from utils.charts_amazon import get_db_connection, get_metrics_amazon, plot_bar_popularity
+from utils.charts_mcdo import mcdo_generate_selected_graphs
+from utils.charts_bk import bk_item_popularity
 
 
-# ---------------------------------------------------------
-# Nettoyage Amazon (basé sur TON dataset réel)
-# ---------------------------------------------------------
-def clean_amazon(df):
+st.set_page_config(layout="wide", page_title="Dashboard Multi-Datasets")
 
-    # Prix : enlever ₹ + virgules → convertir en float
-    price_cols = ["discounted_price", "actual_price"]
-    for col in price_cols:
-        if col in df.columns:
-            df[col] = (
-                df[col]
-                .astype(str)
-                .str.replace("₹", "", regex=False)
-                .str.replace(",", "", regex=False)  # virgule = milliers → on supprime
-                .str.strip()
-            )
-            df[col] = pd.to_numeric(df[col], errors="coerce")
-
-    # Pourcentage : enlever % → convertir en float
-    if "discount_percentage" in df.columns:
-        df["discount_percentage"] = (
-            df["discount_percentage"]
-            .astype(str)
-            .str.replace("%", "", regex=False)
-            .str.strip()
-        )
-        df["discount_percentage"] = pd.to_numeric(df["discount_percentage"], errors="coerce")
-
-    # Rating : déjà au bon format (4.2)
-    if "rating" in df.columns:
-        df["rating"] = pd.to_numeric(df["rating"], errors="coerce")
-
-    # Rating count : enlever virgules → convertir en int
-    if "rating_count" in df.columns:
-        df["rating_count"] = (
-            df["rating_count"]
-            .astype(str)
-            .str.replace(",", "", regex=False)
-            .str.strip()
-        )
-        df["rating_count"] = pd.to_numeric(df["rating_count"], errors="coerce").astype("Int64")
-
-    return df
-
-
-# ---------------------------------------------------------
-# Détection du dataset
-# ---------------------------------------------------------
-def detect_dataset(df):
-    amazon_cols = {
-        "product_id", "product_name", "category",
-        "discounted_price", "actual_price", "discount_percentage",
-        "rating", "rating_count", "about_product",
-        "user_id", "user_name", "review_id",
-        "review_title", "review_content", "img_link",
-        "product_link"
+# --- CSS KPI GÉANTS ---
+st.markdown("""
+    <style>
+    .metric-card {
+        background-color: #ffffff;
+        padding: 55px;
+        border-radius: 22px;
+        border: 2px solid #e2e8f0;
+        text-align: center;
+        box-shadow: 0 12px 20px -3px rgba(0, 0, 0, 0.15);
+        transition: 0.3s;
+        width: 100%;
+        overflow: hidden;
     }
+    .metric-card:hover {
+        transform: scale(1.10);
+        box-shadow: 0 20px 30px -5px rgba(0,0,0,0.25);
+    }
+    .metric-label {
+        color: #1e293b;
+        font-size: 2rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        margin-bottom: 15px;
+        white-space: nowrap;
+    }
+    .metric-value {
+        color: #1d4ed8;
+        font-size: 15vw;
+        font-weight: 900;
+        line-height: 1;
+        white-space: nowrap;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-    bk_cols = {"item", "Attribute", "Value", "global_us_usc"}
+st.title("🏛️ Dashboard de ventes")
+st.divider()
 
-    mcdo_cols = {"table_name", "heading", "item", "Date", "Value"}
+file = st.sidebar.file_uploader("📂 Charger un fichier CSV", type="csv")
 
-    if amazon_cols.issubset(df.columns):
-        return "amazon"
-    if bk_cols.issubset(df.columns):
-        return "bk"
-    if mcdo_cols.issubset(df.columns):
-        return "mcdo"
-    return "unknown"
-
-
-# ---------------------------------------------------------
-# Upload du fichier
-# ---------------------------------------------------------
-uploaded_file = st.sidebar.file_uploader("Importer un fichier CSV", type=["csv"])
-
-if not uploaded_file:
-    st.info("Importe un fichier Amazon, Burger King ou McDo pour commencer.")
+if not file:
+    st.info("Veuillez charger un fichier CSV.")
     st.stop()
 
-df = pd.read_csv(uploaded_file)
-df.columns = [c.strip() for c in df.columns]
+df_raw = pd.read_csv(file)
+df_clean = clean_data(df_raw)
+dataset_type = detect_dataset_type(df_clean)
 
-dataset_type = detect_dataset(df)
-st.sidebar.write(f"Dataset détecté : **{dataset_type.upper()}**")
+st.sidebar.markdown(f"**Type détecté :** `{dataset_type}`")
 
-# Stockage DuckDB
-con.execute("DROP TABLE IF EXISTS data")
-con.execute("CREATE TABLE data AS SELECT * FROM df")
-
-st.subheader("Aperçu des données")
-st.dataframe(df.head())
-
-
-# ---------------------------------------------------------
-# KPI + Visualisations selon dataset
-# ---------------------------------------------------------
-
-# ---------------- AMAZON ----------------
+# -----------------------------
+# AMAZON
+# -----------------------------
 if dataset_type == "amazon":
-    st.header("KPI Amazon")
+    st.header("🛒 Amazon – Analyse détaillée")
 
-    df = clean_amazon(df)
+    if 'main_category' not in df_clean.columns and 'category' in df_clean.columns:
+        df_clean['main_category'] = df_clean['category'].astype(str).str.split('|').str[0]
 
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Prix moyen réduit", f"{df['discounted_price'].mean():.2f}")
-    col2.metric("Prix moyen réel", f"{df['actual_price'].mean():.2f}")
-    col3.metric("Réduction moyenne (%)", f"{df['discount_percentage'].mean():.2f}")
-    col4.metric("Note moyenne", f"{df['rating'].mean():.2f}")
+    con = get_db_connection(df_clean)
+    categories = con.execute("SELECT DISTINCT main_category FROM sales").df()['main_category'].tolist()
+    default_cats = categories[:3] if len(categories) >= 3 else categories
 
-    st.subheader("Répartition des catégories")
-    chart = alt.Chart(df).mark_bar().encode(
-        x="category:N",
-        y="count():Q",
-        color="category:N"
+    selected = st.sidebar.multiselect("Filtrer les catégories", categories, default=default_cats)
+
+    m = get_metrics_amazon(con, selected)
+
+    df_final = con.execute(
+        "SELECT * FROM sales WHERE main_category IN ?", [selected]
+    ).df() if selected else df_clean
+
+    avg_discount = df_final["discount_percentage"].mean()
+    avg_reviews_per_item = df_final["rating_count"].mean()
+
+    # --- KPI Amazon (3 par ligne) ---
+    c1, c2, c3 = st.columns(3)
+    c4, c5, c6 = st.columns(3)
+
+    with c1:
+        st.markdown(f'<div class="metric-card"><p class="metric-label">Catalogue</p><p class="metric-value">{int(m["total_items"])}</p></div>', unsafe_allow_html=True)
+
+    with c2:
+        st.markdown(f'<div class="metric-card"><p class="metric-label">Satisfaction</p><p class="metric-value">{m["avg_rating"]:.2f}</p></div>', unsafe_allow_html=True)
+
+    with c3:
+        st.markdown(f'<div class="metric-card"><p class="metric-label">Prix Moyen</p><p class="metric-value">{m["avg_price"]:.0f}₹</p></div>', unsafe_allow_html=True)
+
+    with c4:
+        total_avis = f"{int(m['total_volume']):,}".replace(",", " ")
+        st.markdown(f'<div class="metric-card"><p class="metric-label">Total Avis</p><p class="metric-value">{total_avis}</p></div>', unsafe_allow_html=True)
+
+    with c5:
+        st.markdown(f'<div class="metric-card"><p class="metric-label">Remise Moyenne</p><p class="metric-value">{avg_discount:.1f}%</p></div>', unsafe_allow_html=True)
+
+    with c6:
+        st.markdown(f'<div class="metric-card"><p class="metric-label">Avis / Produit</p><p class="metric-value">{avg_reviews_per_item:.0f}</p></div>', unsafe_allow_html=True)
+
+    # --- Graphe 1 : Popularité ---
+    st.subheader("🏆 Popularité des Produits")
+    fig, explanation = plot_bar_popularity(df_final)
+    st.plotly_chart(fig, use_container_width=True)
+    st.info(explanation)
+
+    # --- Graphe 2 : Prix vs Satisfaction (corrigé NaN) ---
+    st.subheader("📉 Relation Prix vs Satisfaction")
+
+    df_scatter = df_final.dropna(subset=["rating", "discounted_price", "rating_count"])
+    df_scatter = df_scatter[df_scatter["rating_count"] > 0]
+
+    fig_scatter = px.scatter(
+        df_scatter,
+        x="discounted_price",
+        y="rating",
+        size="rating_count",
+        color="main_category",
+        hover_name="product_name",
+        title="Prix vs Satisfaction"
     )
-    st.altair_chart(chart, use_container_width=True)
 
-    st.subheader("Produits et liens")
-    st.dataframe(df[["product_name", "product_link"]].head(20))
+    fig_scatter.update_layout(template="plotly_white", height=600)
+    st.plotly_chart(fig_scatter, use_container_width=True)
+    st.info("Ce graphique montre comment le prix influence la satisfaction.")
 
-
-# ---------------- BURGER KING ----------------
-elif dataset_type == "bk":
-    st.header("KPI Burger King")
-
-    col1, col2 = st.columns(2)
-    col1.metric("Valeur moyenne", f"{df['Value'].mean():.2f}")
-    col2.metric("Valeur max", f"{df['Value'].max():.2f}")
-
-    st.subheader("Valeurs par item")
-    chart = alt.Chart(df).mark_bar().encode(
-        x="item:N",
-        y="Value:Q",
-        color="item:N"
-    )
-    st.altair_chart(chart, use_container_width=True)
+    with st.expander("🔎 Voir les données brutes"):
+        st.dataframe(df_final)
 
 
-# ---------------- MCDONALD'S ----------------
+# -----------------------------
+# MCDONALD'S
+# -----------------------------
+# -----------------------------
+# MCDONALD'S
+# -----------------------------
 elif dataset_type == "mcdo":
-    st.header("KPI McDonald's")
+    st.header("🍟 McDonald's – Analyse stratégique")
 
-    df["Date"] = pd.to_datetime(df["Date"], errors="ignore")
+    df_clean["Date"] = pd.to_datetime(df_clean["Date"], errors="coerce")
+    df_clean["Value"] = pd.to_numeric(df_clean["Value"], errors="coerce")
 
-    col1, col2 = st.columns(2)
-    col1.metric("Valeur moyenne", f"{df['Value'].mean():.2f}")
-    col2.metric("Valeur max", f"{df['Value'].max():.2f}")
+    # --- Filtres dans la sidebar ---
+    st.sidebar.subheader("Filtres McDo")
 
-    st.subheader("Évolution dans le temps")
-    chart = alt.Chart(df).mark_line(point=True).encode(
-        x="Date:T",
-        y="Value:Q",
-        color="item:N"
-    )
-    st.altair_chart(chart, use_container_width=True)
+    all_headings = sorted(df_clean["heading"].unique())
+    all_items = sorted(df_clean["item"].unique())
+    all_years = sorted(df_clean["Date"].dt.year.unique())
+
+    selected_headings = st.sidebar.multiselect("Heading", all_headings, default=all_headings)
+    selected_items = st.sidebar.multiselect("Item", all_items, default=all_items)
+    selected_years = st.sidebar.multiselect("Année", all_years, default=all_years)
+
+    df_filtered = df_clean[
+        df_clean["heading"].isin(selected_headings) &
+        df_clean["item"].isin(selected_items) &
+        (df_clean["Date"].dt.year.isin(selected_years))
+    ]
+
+    # --- KPI McDo (6 KPI utiles) ---
+    total_revenue = df_filtered[df_filtered["item"] == "total_revenue"]["Value"].sum()
+    operating_income = df_filtered[df_filtered["item"] == "operating_income"]["Value"].sum()
+    net_income = df_filtered[df_filtered["item"] == "net_income"]["Value"].sum()
+
+    store_count = df_filtered[df_filtered["heading"] == "store_count"]["Value"].max()
+
+    total_assets = df_filtered[(df_filtered["heading"] == "assets") & (df_filtered["item"] == "total")]["Value"].sum()
+    total_liabilities = df_filtered[(df_filtered["heading"] == "liabilities") & (df_filtered["item"] == "total")]["Value"].sum()
+
+    # Ligne 1
+    c1, c2, c3 = st.columns(3)
+    with c1: st.markdown(f'<div class="metric-card"><p class="metric-label">Chiffre d’affaires</p><p class="metric-value">{total_revenue:,.0f}</p></div>', unsafe_allow_html=True)
+    with c2: st.markdown(f'<div class="metric-card"><p class="metric-label">Résultat Op.</p><p class="metric-value">{operating_income:,.0f}</p></div>', unsafe_allow_html=True)
+    with c3: st.markdown(f'<div class="metric-card"><p class="metric-label">Résultat Net</p><p class="metric-value">{net_income:,.0f}</p></div>', unsafe_allow_html=True)
+
+    # Ligne 2
+    c4, c5, c6 = st.columns(3)
+    with c4: st.markdown(f'<div class="metric-card"><p class="metric-label">Restaurants</p><p class="metric-value">{store_count:,.0f}</p></div>', unsafe_allow_html=True)
+    with c5: st.markdown(f'<div class="metric-card"><p class="metric-label">Actifs Totaux</p><p class="metric-value">{total_assets:,.0f}</p></div>', unsafe_allow_html=True)
+    with c6: st.markdown(f'<div class="metric-card"><p class="metric-label">Passifs Totaux</p><p class="metric-value">{total_liabilities:,.0f}</p></div>', unsafe_allow_html=True)
+
+    # --- Graphes McDo ---
+    graphs = mcdo_generate_selected_graphs(df_filtered)
+
+    for heading, fig, explanation in graphs:
+        st.subheader(f"📊 {heading}")
+        st.plotly_chart(fig, use_container_width=True)
+        st.info(explanation)
+
+    with st.expander("🔎 Voir les données brutes"):
+        st.dataframe(df_filtered)
+
+# -----------------------------
+# BURGER KING
+# -----------------------------
+elif dataset_type == "burger_king":
+    st.header("🍔 Burger King – Analyse détaillée")
+
+    # --- Filtres dans la sidebar ---
+    st.sidebar.subheader("Filtres Burger King")
+
+    items = sorted(df_clean["item"].unique())
+    attributes = sorted(df_clean["Attribute"].unique())
+
+    selected_items = st.sidebar.multiselect("Item", items, default=items)
+    selected_attributes = st.sidebar.multiselect("Attribut", attributes, default=attributes)
+
+    df_filtered_bk = df_clean[
+        df_clean["item"].isin(selected_items) &
+        df_clean["Attribute"].isin(selected_attributes)
+    ]
+
+    # KPI
+    total_items = df_filtered_bk["item"].nunique()
+    total_attributes = df_filtered_bk["Attribute"].nunique()
+    total_values = len(df_filtered_bk)
+
+    c1, c2, c3 = st.columns(3)
+    with c1: st.markdown(f'<div class="metric-card"><p class="metric-label">Items</p><p class="metric-value">{total_items}</p></div>', unsafe_allow_html=True)
+    with c2: st.markdown(f'<div class="metric-card"><p class="metric-label">Attributs</p><p class="metric-value">{total_attributes}</p></div>', unsafe_allow_html=True)
+    with c3: st.markdown(f'<div class="metric-card"><p class="metric-label">Entrées</p><p class="metric-value">{total_values}</p></div>', unsafe_allow_html=True)
+
+    # Graphe
+    st.subheader("🔥 Popularité des Items")
+    fig, explanation = bk_item_popularity(df_filtered_bk)
+    st.plotly_chart(fig, use_container_width=True)
+    st.info(explanation)
+
+    with st.expander("🔎 Voir les données brutes"):
+        st.dataframe(df_filtered_bk)
 
 
-# ---------------- UNKNOWN ----------------
 else:
-    st.error("Dataset non reconnu. Vérifie les colonnes.")
+    st.error("Dataset non reconnu.")
+    st.dataframe(df_clean)
