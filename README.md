@@ -40,6 +40,6 @@ Le projet est conçu de manière modulaire pour faciliter les modifications :
 **Base de données :** Les requêtes SQL performantes sont gérées via duckdb_utils.py ou db_manager.py.
 
 ## ⚡ Installation rapide<br>
-PowerShell
-pip install streamlit pandas plotly duckdb
-streamlit run app.py
+PowerShell<br>
+`pip install streamlit pandas plotly duckdb<br>`
+`streamlit run app.py`
