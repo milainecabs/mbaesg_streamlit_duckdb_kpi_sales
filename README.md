@@ -1,56 +1,45 @@
-🚀**Dashboard KPI Multi-Datasets (Amazon, BK, McDo)
-Ce projet est une application d'analyse de données interactive permettant de visualiser des indicateurs clés (KPI) à partir de trois sources de données distinctes. L'application détecte automatiquement le type de fichier importé et adapte les analyses en conséquence.**
+🏛️ Dashboard d'Analyse Multi-Datasets (Sales Analytics)
+📋 Présentation du Projet
+Ce dashboard est une plateforme d'aide à la décision centralisée permettant d'analyser les performances de géants du commerce et de la restauration. Il permet aux analystes d'explorer des données provenant de Amazon, McDonald's et Burger King au sein d'une interface unique et intelligente.
 
-📋 **Fonctionnalités
-Détection Automatique :** Identifie si le fichier CSV provient d'Amazon, de Burger King ou de McDonald's en analysant les noms des colonnes.
+🚀 Architecture Technique
+1. Détection Intelligente (utils/detection.py)
+Le système identifie le type de dataset dès l'importation en analysant la structure des colonnes :
 
-**Moteur DuckDB :** Utilise DuckDB pour le stockage temporaire et la manipulation rapide des données.
+Amazon : Identification par les IDs produits et les métriques d'évaluation.
 
-**Nettoyage de Données (Amazon) :** Conversion automatique des prix (de devises ₹ vers float) et traitement des pourcentages et notations.
+McDo : Identification par les indicateurs financiers et le nombre de restaurants.
 
-**Visualisations Interactives :** Graphiques Altair (Barres et Lignes) adaptés à chaque contexte métier.
+Burger King : Identification par les attributs temporels et la popularité des items.
 
-🛠️ **Stack Technique
-Frontend : Streamlit**
+2. Nettoyage Dynamique (utils/cleaning_data.py)
+Une pipeline de traitement assure la fiabilité des analyses :
 
-Analyse de données : Pandas
+Extraction Numérique : Utilisation de Regex pour isoler les valeurs calculables (suppression des symboles ₹, $, %, etc.).
 
-Moteur SQL : DuckDB
+Ciblage par Mots-Clés : Nettoyage automatique basé sur le nom des colonnes (price, rating, count).
 
-Visualisation : Altair
+📖 Mode d'Emploi
+Lancement : Exécutez streamlit run app.py dans votre terminal.
 
-💻 **Installation**
-1. Prérequis
-Assurez-vous d'avoir Python 3.9 ou plus récent installé.
+Importation : Chargez un fichier CSV compatible via la barre latérale.
 
-2. Configuration de l'environnement
+Exploration : Le dashboard adapte ses graphiques instantanément. Utilisez les filtres (catégories, années) pour affiner votre analyse.
+
+Lecture : Les indicateurs clés (KPIs) et les graphiques interactifs Plotly s'affichent automatiquement.
+
+🛠️ Maintenance et Évolutions
+Le projet est conçu de manière modulaire pour faciliter les modifications :
+
+Ajouter un graphique : Intervenez dans le fichier correspondant dans le dossier utils/ (ex: charts_bk.py).
+
+Modifier le nettoyage : La logique globale de traitement se trouve dans utils/cleaning_data.py.
+
+Ajuster l'interface : Le fichier principal app.py gère le layout et le style CSS des KPIs.
+
+Base de données : Les requêtes SQL performantes sont gérées via duckdb_utils.py ou db_manager.py.
+
+⚡ Installation rapide
 PowerShell
-# Activer l'environnement virtuel
-.\.venv\Scripts\activate
-
-# Installer les dépendances
-pip install -r requirements.txt<>
-3. Lancement
-PowerShell
+pip install streamlit pandas plotly duckdb
 streamlit run app.py
-📖 Guide d'Utilisation
-Importation : Utilisez la barre latérale (sidebar) pour uploader votre fichier CSV.
-
-**Analyse Amazon :** Affiche les prix moyens (réduits vs réels), les remises moyennes et la répartition par catégorie de produits.
-
-**Analyse Fast Food :**
-
-**Burger King :** Visualisation des valeurs par item.
-
-**McDonald's :** Analyse temporelle de l'évolution des valeurs.
-
-📂 **Structure du Projet
-Plaintext**<br>
-├── .venv/                # Environnement virtuel Python<br>
-├── app.py                # Code principal de l'application Streamlit<br>
-├── sales.duckdb          # Base de données locale DuckDB<br>
-├── requirements.txt      # Dépendances du projet<br>
-└── README.md             # Documentation
-
-👥 **Contributeurs**
-[Milaine, Thomas, Irmeline, Linh, Jeff]
