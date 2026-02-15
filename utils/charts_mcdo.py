@@ -21,9 +21,6 @@ def mcdo_generate_selected_graphs(df):
 
     graphs = []
 
-    # -----------------------------
-    # 1) Graphes principaux (5 headings)
-    # -----------------------------
     selected_headings = [
         "revenue",
         "operating_non_operating_results",
@@ -65,9 +62,6 @@ def mcdo_generate_selected_graphs(df):
 
         graphs.append((heading, fig, explanation))
 
-    # -----------------------------
-    # 2) Revenue vs Operating Income
-    # -----------------------------
     df_rev = df[df["item"] == "total_revenue"]
     df_op = df[df["item"] == "operating_income"]
 
@@ -89,9 +83,6 @@ def mcdo_generate_selected_graphs(df):
             "Comparaison directe entre le chiffre d’affaires et le résultat opérationnel."
         ))
 
-    # -----------------------------
-    # 3) Franchise vs Company-operated revenue
-    # -----------------------------
     df_franchise = df[df["item"].str.contains("franchised_", case=False, na=False)]
     df_company = df[df["item"].str.contains("company_operated_", case=False, na=False)]
 
@@ -116,9 +107,6 @@ def mcdo_generate_selected_graphs(df):
             "Comparaison entre les revenus franchisés et les restaurants opérés directement."
         ))
 
-    # -----------------------------
-    # 4) Pie chart : Répartition des revenus
-    # -----------------------------
     df_rev_segments = df[df["heading"] == "revenue"]
 
     if not df_rev_segments.empty:
