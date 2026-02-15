@@ -27,7 +27,7 @@ def bk_item_popularity(df):
     fig.update_coloraxes(
         colorbar=dict(
             dtick=1,        # Un cran tous les 1 (2021, 2022, 2023)
-            tickformat="d"  # "d" signifie entier (pas de virgules, pas de points)
+            tickformat="d"  # "d" signifie entier [pas de virgules, pas de points]
         )
     )
 
