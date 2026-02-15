@@ -200,7 +200,7 @@ Le dashboard utilise :
 
 MEYOUDOM Milaine Cabrelle
 
-TEUGOMO GEUVOU Irmeline
+TEGOMO GUEVOU Irmeline
 
 Thomas MARIE-ANNE
 
