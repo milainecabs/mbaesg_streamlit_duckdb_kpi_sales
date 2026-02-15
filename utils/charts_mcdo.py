@@ -1,10 +1,3 @@
-
-À moi
-
-Ce message semble être en anglais
-
- Une pièce jointe
-  •  Analysé par Gmail
 import plotly.express as px
 import pandas as pd
 
